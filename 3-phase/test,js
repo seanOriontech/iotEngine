@@ -1,0 +1,170 @@
+struct DataPacket {
+  char serial[4];                   // 4 bytes
+  uint8_t mac[6];                   // 6 bytes
+  int32_t V1N;                       // Use int32_t to store V1N * 10 (e.g., 230V -> 2300)
+  int32_t V2N;                       // 4 bytes
+  int32_t V3N;                       // 4 bytes
+  int32_t V12;                       // 4 bytes
+  int32_t V23;                       // 4 bytes
+  int32_t V31;                       // 4 bytes
+  int32_t C1;                        // 4 bytes
+  int32_t C2;                        // 4 bytes
+  int32_t C3;                        // 4 bytes
+  int32_t P1;                        // 4 bytes
+  int32_t P2;                        // 4 bytes
+  int32_t P3;                        // 4 bytes
+  int32_t S1;                        // 4 bytes
+  int32_t S2;                        // 4 bytes
+  int32_t S3;                        // 4 bytes
+  int32_t Q1;                        // 4 bytes
+  int32_t Q2;                        // 4 bytes
+  int32_t Q3;                        // 4 bytes
+  int32_t voltageSum;                // 4 bytes
+  int32_t lineVoltageSum;            // 4 bytes
+  int32_t powerSum;                  // 4 bytes
+  int32_t apparentPowerSum;          // 4 bytes
+  int32_t reactivePowerSum;          // 4 bytes
+  int32_t PD;                        // 4 bytes
+  int32_t AD;                        // 4 bytes
+  int32_t PF1;                       // 4 bytes
+  int32_t PF2;                       // 4 bytes
+  int32_t PF3;                       // 4 bytes
+  int32_t F;                         // 4 bytes
+  int32_t PPD;                       // 4 bytes
+  int32_t APD;                       // 4 bytes
+  int32_t PCD;                       // 4 bytes
+  int32_t total_kWh_Pos;             // 4 bytes
+  uint32_t combinedRawValue;         // 4 bytes
+}; // Total: 80 bytes (assuming all int32_t is 4 bytes)
+
+
+// Declare the packet globally so it can be used in any function within main.cpp
+DataPacket packet;
+
+void publishMqttData() {
+  if (!mqttClient.connected()) {
+      reconnect();
+  }
+
+  if (!mqttClient.connected()) {
+      Serial.println("[DEBUG] Unable to connect to MQTT broker, aborting publish.");
+      mqttPushedSuccessfully = false;
+      drawWiFiIcon(WiFi.status() == WL_CONNECTED, mqttPushedSuccessfully);
+      return;
+  }
+
+  // Populate the packet
+  DataPacket packet;
+  strncpy(packet.serial, deviceSerialNumber, sizeof(packet.serial));
+  WiFi.macAddress(packet.mac);
+
+  // Populate voltage readings
+  packet.V1N = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L1_N_DeciVolts / 10.0 * 10));
+  packet.V2N = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L2_N_DeciVolts / 10.0 * 10));
+  packet.V3N = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L3_N_DeciVolts / 10.0 * 10));
+  packet.V12 = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L1_L2_DeciVolts / 10.0 * 10));
+  packet.V23 = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L2_L3_DeciVolts / 10.0 * 10));
+  packet.V31 = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L3_L1_DeciVolts / 10.0 * 10));
+
+  // Populate current readings
+  packet.C1 = gEM24_SysVars.Current_L1_MilliAmps;
+  packet.C2 = gEM24_SysVars.Current_L2_MilliAmps;
+  packet.C3 = gEM24_SysVars.Current_L3_MilliAmps;
+
+  // Populate power readings
+  packet.P1 = static_cast<int32_t>(roundf(gEM24_SysVars.Power_L1_DeciWatts / 10.0 * 10));
+  packet.P2 = static_cast<int32_t>(roundf(gEM24_SysVars.Power_L2_DeciWatts / 10.0 * 10));
+  packet.P3 = static_cast<int32_t>(roundf(gEM24_SysVars.Power_L3_DeciWatts / 10.0 * 10));
+
+  // Populate apparent power readings
+  packet.S1 = static_cast<int32_t>(roundf(gEM24_SysVars.ApparentPower_L1_DeciVA / 10.0 * 10));
+  packet.S2 = static_cast<int32_t>(roundf(gEM24_SysVars.ApparentPower_L2_DeciVA / 10.0 * 10));
+  packet.S3 = static_cast<int32_t>(roundf(gEM24_SysVars.ApparentPower_L3_DeciVA / 10.0 * 10));
+
+  // Populate reactive power readings
+  packet.Q1 = static_cast<int32_t>(roundf(gEM24_SysVars.ReactivePower_L1_DeciVar / 10.0 * 10));
+  packet.Q2 = static_cast<int32_t>(roundf(gEM24_SysVars.ReactivePower_L2_DeciVar / 10.0 * 10));
+  packet.Q3 = static_cast<int32_t>(roundf(gEM24_SysVars.ReactivePower_L3_DeciVar / 10.0 * 10));
+
+  // Populate summed voltage and power values
+  packet.voltageSum = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L_N_Sum_DeciVolts / 10.0 * 10));
+  packet.lineVoltageSum = static_cast<int32_t>(roundf(gEM24_SysVars.VoltageAC_L_L_Sum_DeciVolts / 10.0 * 10));
+  packet.powerSum = static_cast<int32_t>(roundf(gEM24_SysVars.Power_Sum_DeciWatts / 10.0 * 10));
+  packet.apparentPowerSum = static_cast<int32_t>(roundf(gEM24_SysVars.ApparentPower_Sum_DeciVA / 10.0 * 10));
+  packet.reactivePowerSum = static_cast<int32_t>(roundf(gEM24_SysVars.ReactivePower_Sum_DeciVar / 10.0 * 10));
+
+  // Populate demand values
+  packet.PD = static_cast<int32_t>(roundf(gEM24_SysVars.PowerDemand_Sum_DeciWatts / 10.0 * 10));
+  packet.AD = static_cast<int32_t>(roundf(gEM24_SysVars.ApparentPowerDemand_Sum_DeciVA / 10.0 * 10));
+
+  // Populate power factors
+  packet.PF1 = gEM24_SysVars.PowerFactor_L1_MilliPF;
+  packet.PF2 = gEM24_SysVars.PowerFactor_L2_MilliPF;
+  packet.PF3 = gEM24_SysVars.PowerFactor_L3_MilliPF;
+
+  // Populate frequency
+  packet.F = static_cast<int32_t>(roundf(gEM24_SysVars.Frequency_DeciHz / 10.0 * 10));
+
+  // Populate peak demands
+  packet.PPD = static_cast<int32_t>(roundf(gEM24_SysVars.PeakPowerDemand_Sum_DeciWatts / 10.0 * 10));
+  packet.APD = static_cast<int32_t>(roundf(gEM24_SysVars.PeakApparentPowerDemand_Sum_DeciVA / 10.0 * 10));
+  packet.PCD = gEM24_SysVars.PeakCurrentDemand_MilliAmps;
+
+  // Combine Low Part and High Part into a single raw value
+  uint16_t lowPart = 3136; // example low part value
+  uint16_t highPart = 19;  // example high part value
+  packet.combinedRawValue = (highPart << 16) | lowPart;
+
+  // Calculate corrected energy total
+  float scalingFactor = 311.0f; // Adjust this as needed based on your calculation
+  packet.total_kWh_Pos = static_cast<int64_t>(packet.combinedRawValue) * static_cast<int64_t>(scalingFactor); // Ensure it's using the right type
+
+  Serial.printf("[DEBUG] Combined Raw Value: %d, Corrected Energy Total (+) kWh: %.2f\n", 
+  packet.combinedRawValue, packet.total_kWh_Pos);
+
+
+  // Display the contents of the packet for debugging
+  Serial.println("[DEBUG] Publishing data:");
+  Serial.printf("Serial: %s, MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                packet.serial,
+                packet.mac[0], packet.mac[1], packet.mac[2], packet.mac[3], packet.mac[4], packet.mac[5]);
+  Serial.printf("V1N: %d, V2N: %d, V3N: %d, V12: %d, V23: %d, V31: %d\n",
+                packet.V1N, packet.V2N, packet.V3N, packet.V12, packet.V23, packet.V31);
+  Serial.printf("C1: %d, C2: %d, C3: %d\n", packet.C1, packet.C2, packet.C3);
+  Serial.printf("P1: %d, P2: %d, P3: %d\n", packet.P1, packet.P2, packet.P3);
+  Serial.printf("S1: %d, S2: %d, S3: %d\n", packet.S1, packet.S2, packet.S3);
+  Serial.printf("Q1: %d, Q2: %d, Q3: %d\n", packet.Q1, packet.Q2, packet.Q3);
+  Serial.printf("Voltage Sum: %d, Line Voltage Sum: %d, Power Sum: %d\n",
+                packet.voltageSum, packet.lineVoltageSum, packet.powerSum);
+  Serial.printf("Apparent Power Sum: %d, Reactive Power Sum: %d\n",
+                packet.apparentPowerSum, packet.reactivePowerSum);
+  Serial.printf("PD: %d, AD: %d\n", packet.PD, packet.AD);
+  Serial.printf("PF1: %d, PF2: %d, PF3: %d\n", packet.PF1, packet.PF2, packet.PF3);
+  Serial.printf("Frequency: %d, PPD: %d, APD: %d, PCD: %d\n",
+                packet.F, packet.PPD, packet.APD, packet.PCD);
+  Serial.printf("Total kWh Pos: %d\n", packet.total_kWh_Pos);
+
+  // Publish first half of data to the first topic
+  uint8_t* payloadPtr1 = (uint8_t*)&packet; // First payload
+  if (mqttClient.publish("carloEM112-2/007/first_half", payloadPtr1, sizeof(packet) / 2)) {
+      Serial.println("[DEBUG] First half of MQTT message published successfully.");
+      mqttPushedSuccessfully = true; // Set to true if publish is successful
+  } else {
+      Serial.print("[ERROR] First half MQTT publish failed with state: ");
+      Serial.println(mqttClient.state());
+      mqttPushedSuccessfully = false; // Set to false if publish fails
+  }
+  // Publish second half of data to the second topic
+  uint8_t* payloadPtr2 = payloadPtr1 + (sizeof(packet) / 2); // Second payload
+  if (mqttClient.publish("carloEM112-2/007/second_half", payloadPtr2, sizeof(packet) / 2)) {
+      Serial.println("[DEBUG] Second half of MQTT message published successfully.");
+      mqttPushedSuccessfully = true; // Set to true if publish is successful
+  } else {
+      Serial.print("[ERROR] Second half MQTT publish failed with state: ");
+      Serial.println(mqttClient.state());
+      mqttPushedSuccessfully = false; // Set to false if publish fails
+  }
+
+   // Update Wi-Fi and MQTT status icon
+  drawWiFiIcon(WiFi.status() == WL_CONNECTED, mqttPushedSuccessfully);
+}
